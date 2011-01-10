@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:BorderContainer xmlns:fx="http://ns.adobe.com/mxml/2009" 
+				   xmlns:s="library://ns.adobe.com/flex/spark" 
+				   xmlns:mx="library://ns.adobe.com/flex/mx" >
+	<!--cornerRadius="6" borderWeight="1" borderColor="0x000000"-->
+	<fx:Script>
+		<![CDATA[
+			import spark.components.TextArea;
+			[Bindable]
+			private var _reviewerName:String;
+			[Bindable]
+			private var _date:String;
+			[Bindable]
+			private var _review:String;
+			
+			public function get reviewerName():String
+			{
+				return _reviewerName;
+			}
+
+			public function set reviewerName(value:String):void
+			{
+				_reviewerName = value;
+			}
+
+			public function get date():String
+			{
+				return _date;
+			}
+
+			public function set date(value:String):void
+			{
+				_date = value;
+			}
+
+			public function get review():String
+			{
+				return _review;
+			}
+
+			public function set review(value:String):void
+			{				
+				_review = value;				
+			}
+
+		]]>
+	</fx:Script>
+
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	
+	<s:VGroup horizontalAlign="center" width="100%" left="10" top="5">
+		<s:Group width="100%">
+			<s:Label text="{_reviewerName}" fontWeight="bold"/>
+			<s:Label text="{_date}" fontWeight="bold" right="5"/>
+		</s:Group>
+		<mx:Spacer height="5"/>
+		<s:RichText textAlign="justify" text="{_review}" width="90%" />
+		<!--		<mx:Spacer height="5"/>
+		<s:HGroup width="100%" horizontalAlign="right" paddingRight="5" paddingBottom="5">
+			<s:Button label="Useful?"/>
+			<s:Button label="Not Accurate?"/>
+		</s:HGroup>-->
+	</s:VGroup>
+</s:BorderContainer>

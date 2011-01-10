@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<configuration>
+	<google_map_key>ABQIAAAAC5pP_BhT-ZJurnKT3hiDchT3KoDuueKnHJyOo-c2lnWRMtz2hxRR8lCdKm9w7uDJ04l_cLuTjDQpzA</google_map_key>
+	<current_weather_api_url>http://api.wunderground.com/auto/wui/geo/WXCurrentObXML/index.xml</current_weather_api_url>
+	<airport_icon_image>airport_br.png</airport_icon_image>
+	<airport_cluster_image>airport_cluster.png</airport_cluster_image>
+	<radar_image_url>http://radar.weather.gov/Conus/RadarImg/latest_radaronly.gif</radar_image_url>
+	<crossdomain_policy_url>http://radar.weather.gov/crossdomain.xml</crossdomain_policy_url>
+	<service_url>http://www.skychatter.com/vayuuController/controller.php</service_url>
+	<!--<service_url>http://localhost/vayuuController/controller.php</service_url>-->
+	<!--<service_url>http://203.81.194.102:9090/vayuu/vayuuPollingServlet</service_url>-->
+</configuration>

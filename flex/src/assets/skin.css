@@ -1,0 +1,20 @@
+.panelBtn{
+	cornerRadius: 15;
+	color: #000000;
+	font-weight:bold;
+	font-size:10;
+	fillColors: #666666, #000000, #bae4fe, #4eace7;
+	fillAlphas: 1, 1, 1, 1;
+	overFillColors: #999999, #FFFFFF;
+	padding-left:4;
+}
+.errorMessage{
+	font-size: 10;
+	font-weight: bold;
+	color: #FF0000;
+}
+.infoMessage{
+	font-size: 10;
+	font-weight: bold;
+	color: #065186;
+}

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		   xmlns:s="library://ns.adobe.com/flex/spark" 
+		   xmlns:mx="library://ns.adobe.com/flex/mx" backgroundColor="#FFFFFF" backgroundAlpha="0.3" creationComplete="canvas1_creationCompleteHandler(event)">
+	<fx:Script>
+		<![CDATA[
+			import mx.events.CloseEvent;
+			import mx.events.FlexEvent;
+			
+			import spark.components.Group;
+			
+			[Embed(source="assets/single.png")]
+			public var AirportIcon:Class;  
+			
+			protected function titlewindow1_closeHandler(event:Event):void
+			{
+				this.setVisible(false);
+				(this.parent as Group).removeElement(this);
+			}
+			
+
+			protected function canvas1_creationCompleteHandler(event:FlexEvent):void
+			{
+				singleAirportIcon.source = new AirportIcon();
+			}
+
+		]]>
+	</fx:Script>
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	
+	<s:BorderContainer horizontalCenter="0" verticalCenter="0" height="20%" width="30%" cornerRadius="15" borderWeight="3">
+		
+		
+		<mx:Button skin="@Embed('assets/close-button.gif')" right ="5" top="5" click="titlewindow1_closeHandler(event)"/>
+		<s:VGroup horizontalCenter="0" verticalCenter="0">
+			<s:Label horizontalCenter="0" fontSize="11" fontWeight="bold" text="There are multiple airports here! "/>
+			<s:HGroup verticalCenter="0" horizontalCenter="0">
+				<s:Label fontSize="11" text="Zoom in and click on  "/>
+				<mx:Image id="singleAirportIcon"/>
+				<s:Label fontSize="11" text=" to see details and reviews."/>				
+			</s:HGroup>
+			
+			
+		</s:VGroup>
+		
+	</s:BorderContainer>
+</mx:Canvas>

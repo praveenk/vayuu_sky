@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		   xmlns:s="library://ns.adobe.com/flex/spark" 
+		   xmlns:mx="library://ns.adobe.com/flex/mx" width="310" height="385" 
+		   xmlns:tab="com.mobex.map.marker.tab.*" creationComplete="canvas1_creationCompleteHandler(event)" 
+		   verticalScrollPolicy="off" horizontalScrollPolicy="off">
+	<fx:Script>
+		<![CDATA[
+			import com.google.maps.InfoWindowOptions;
+			import com.mobex.map.marker.AirportMarker;
+			
+			import model.Airport;
+			
+			import mx.controls.Alert;
+			import mx.controls.Image;
+			import mx.events.CloseEvent;
+			import mx.events.FlexEvent;
+			import mx.graphics.IStroke;
+			import mx.graphics.SolidColorStroke;
+			
+			import spark.components.Group;
+			import spark.components.ToggleButton;
+			
+			public var airport:Airport;
+			public var infoWindowTabbedComponent:InfoWindowTabbedComponent =null;
+			private var _reviewButton:ToggleButton;
+			
+			protected function canvas1_creationCompleteHandler(event:FlexEvent):void
+			{
+				airportTitle.text = airport.name+", "+ airport.airportId;
+				infoWindowTabbedComponent = new InfoWindowTabbedComponent(airport);
+				infoWindowTabbedComponent.width = 300;
+				infoWindowTabbedComponent.height = 270;
+				
+				contents.addElement(infoWindowTabbedComponent);
+				
+				var borderContainer:BorderContainer = new  BorderContainer();
+				borderContainer.percentWidth = 100;
+				borderContainer.borderStroke = new SolidColorStroke(0, 2, 0); 
+				
+				borderContainer.height = _reviewButton.height;
+				_reviewButton.horizontalCenter = 0;
+				borderContainer.addElement(_reviewButton);
+				contents.addElement(borderContainer);
+				
+				var tail:Shape = new Shape();
+				tail.graphics.lineStyle(1,0x000000);
+				tail.graphics.beginFill(0xffffff);
+				tail.graphics.moveTo(width/2-10, height-26);
+				tail.graphics.lineTo(width/2-10, height);
+				tail.graphics.lineTo(width/2+10, height-26);
+//				tail.graphics.moveTo(width/2+9, height-26);
+				tail.graphics.lineStyle(1,0xFFFFFF);
+//				tail.graphics.lineTo(width/2-9, height-26);
+				rawChildren.addChild(tail);
+//				this.addChild(tail);
+			}
+			
+			protected function main_closeHandler(event:Event):void
+			{
+				var airportMarker:AirportMarker = airport.marker;
+				airportMarker.unSelect();
+				//				var parentGroup:Group = this.parent as Group;
+				//				parentGroup.removeElement(this);
+			}
+			
+			public function resetInfoWindow():void{
+				if (infoWindowTabbedComponent != null)
+					infoWindowTabbedComponent.init();
+			}
+			
+			public function get reviewButton():ToggleButton
+			{
+				return _reviewButton;
+			}
+			
+			public function set reviewButton(value:ToggleButton):void
+			{
+				_reviewButton = value;
+			}
+			
+		]]>
+	</fx:Script>
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+
+	<!--<s:TitleWindow  id="main" height="100%" width="100%" borderColor="0x000000" cornerRadius="10" close="main_closeHandler(event)">-->
+	<s:BorderContainer  id="main" height="360" width="100%" borderColor="0x000000" cornerRadius="10">
+		<s:VGroup horizontalAlign="center" horizontalCenter="0">
+			<mx:Spacer height="10"/>
+			<mx:Canvas width="100%">				
+				<s:Label id="airportTitle" styleName="infoWindowHeading"/>
+				
+				<mx:Button skin="@Embed('assets/close-button.gif')" right ="1" click="main_closeHandler(event)"/>			
+			</mx:Canvas>
+			
+			<s:VGroup id="contents" height="310" width="300" bottom="0" horizontalCenter="0">
+			</s:VGroup>
+		</s:VGroup>
+	</s:BorderContainer>
+	<!--</s:TitleWindow >-->
+	
+	<s:RectangularDropShadow distance="20" alpha="0.25" blurX="7" blurY="7" 
+							 height="{main.height}" width="{main.width}" blRadius="5" brRadius="5"/>
+	
+	
+</mx:Canvas>

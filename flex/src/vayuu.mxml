@@ -1,0 +1,936 @@
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+			   xmlns:s="library://ns.adobe.com/flex/spark"
+			   xmlns:mx="library://ns.adobe.com/flex/mx"
+			   width="100%"
+			   height="100%" 
+			   preloader= "preload.CustomPreloader" 	
+			   preinitialize="onInitialize()"
+			   addedToStage="application1_addedToStageHandler(event)"
+			   creationComplete="application1_applicationCompleteHandler(event)" 
+			   xmlns:toolbar="com.mobex.application.toolbar.*" 
+			   xmlns:control="com.mobex.application.control.*" 
+			   xmlns:json="com.adobe.serialization.json.*" 
+			   xmlns:mobex="com.mobex.*" resize="application1_resizeHandler(event)"
+			   xmlns:tab="com.mobex.map.marker.tab.*" xmlns:maps="com.google.maps.*">
+	
+	<fx:Style source="assets/skin.css" />
+	<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		s|Application{
+			font-family: "Arial";
+			font-size: 11;
+		}
+		
+		.reviewButtonStyle{
+			font-weight:bold;
+			font-size:12;
+		}
+		
+		.infoWindowHeading{
+			font-weight:bold;
+			font-size:11;
+		}
+		
+		@font-face  {
+			src: url("fonts/ubuntu.swf");
+			font-family: "Ubuntu-Title";
+		}
+	</fx:Style>
+	
+	
+	<fx:Declarations>		
+		
+		<mx:ArrayCollection id="buttonList"> 
+			<fx:String>Search</fx:String>
+			<fx:String>Map</fx:String>
+			<!--<fx:String>Reviews</fx:String>-->
+		</mx:ArrayCollection>
+		<s:RadioButtonGroup id="mapGroup"/>
+		<mx:EmailValidator id="emailValidator" invalid="invalidEmail(event);" valid="validEmail(event);" />
+		
+		<analytics:FlexTracker
+			xmlns:analytics="com.google.analytics.components.*"
+			id="tracker"
+			account="UA-12261117-2"
+			mode="AS3"
+			visualDebug="false"
+			/>
+	</fx:Declarations>
+	
+	<s:states>
+		<s:State name="DefaultState"/>
+		<s:State name="SearchState"/>
+		<s:State name="MapState"/>
+		<s:State name="ReviewsState"/>
+		<s:State name="LoginState"/>
+		<s:State name="SignupState"/>
+		<s:State name="AddReviewState"/>
+		<s:State name="AboutState"/>
+	</s:states>
+	
+	<s:transitions>
+		<s:Transition fromState="*" toState="*">
+			<s:Sequence targets="{[searchPanel, mapPanel, reviewsPanel]}">
+				<s:Fade duration="500"/>
+			</s:Sequence>
+		</s:Transition>	
+	</s:transitions>
+	
+	
+	
+	<fx:Script>
+		<![CDATA[
+			import com.adobe.serialization.json.JSON;
+			import com.google.maps.LatLng;
+			import com.google.maps.LatLngBounds;
+			import com.google.maps.Map;
+			import com.google.maps.MapEvent;
+			import com.google.maps.MapOptions;
+			import com.google.maps.MapType;
+			import com.google.maps.View;
+			import com.google.maps.controls.ZoomControl;
+			import com.google.maps.geom.Attitude;
+			import com.google.maps.overlays.GroundOverlay;
+			import com.google.maps.overlays.GroundOverlayOptions;
+			import com.mobex.application.constant.VayuuStatusConstants;
+			import com.mobex.application.control.ReviewPanel;
+			import com.mobex.application.framework.ApplicationContext;
+			import com.mobex.application.framework.PopupWin;
+			import com.mobex.map.event.MarkerSelectEvent;
+			import com.mobex.map.marker.MarkerManager;
+			
+			import model.Airport;
+			import model.User;
+			
+			import mx.collections.ArrayCollection;
+			import mx.collections.ArrayList;
+			import mx.controls.Alert;
+			import mx.effects.Sequence;
+			import mx.effects.easing.*;
+			import mx.events.FlexEvent;
+			import mx.events.ItemClickEvent;
+			import mx.events.ResizeEvent;
+			import mx.events.ValidationResultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.rpc.http.mxml.HTTPService;
+			import mx.states.Transition;
+			import mx.validators.ValidationResult;
+			
+			import spark.components.ToggleButton;
+			import spark.effects.Fade;
+			import spark.effects.Move;
+			
+			
+			private var map:Map = null;
+			
+			private var groundOverlay:GroundOverlay;
+			private var airportDictionary:Dictionary = new Dictionary();
+			private var airportList:ArrayList = new ArrayList();
+			
+			private var markerManager:MarkerManager;
+			
+			[Bindable]
+			private var appContext:ApplicationContext = ApplicationContext.instance;
+			
+			[Bindable]
+			private var markerSelected:Boolean = false;
+			[Bindable]
+			private var searchInitialized:Boolean = false;
+			
+			[Bindable]
+			private var stageWidth:Number;
+			
+			[Bindable]
+			private var currentUser:User = new User(-1, "Guest User", null);
+			
+			private var loader:Loader = null;			
+			private var configLoader:URLLoader = new URLLoader();
+			private var reviews:Array = null;
+			
+			[Embed(source="data/airports.json",mimeType="application/octet-stream")]
+			private var AirportDataClass:Class;
+			
+			
+			private function onInitialize() : void
+			{				
+				configLoader.addEventListener(Event.COMPLETE, configurationHandler);				
+				configLoader.load(new URLRequest("config/config.xml"));				
+				
+			}
+			
+			private function configurationHandler(e:Event):void
+			{
+				appContext.configModel = XML(configLoader.data);				
+				Security.loadPolicyFile( appContext.crossdomainPolicyURL);
+				
+				map = new Map();
+				map.key=  appContext.googleMapKey;
+				map.percentHeight = 100;
+				map.percentWidth = 100;
+				map.addEventListener(MapEvent.MAP_PREINITIALIZE, onMapPreinitialize);
+				map.addEventListener(MapEvent.MAP_READY, onMapReady);
+				
+				//				
+				//				mapevent_mappreinitialize="onMapPreinitialize(event)"
+				//				mapevent_mapready="onMapReady()"
+				//				
+				mainContainer.addElementAt(map, 0);
+			}
+			
+			private function startupAnimation():void{
+				
+				var seq:Sequence = new Sequence();
+				
+				var mover:Move = new Move(headerBar);
+				mover.duration = 800;				
+				mover.yFrom = -1*headerBar.height;
+				mover.yTo = 0;
+				
+				var appear:Fade = new Fade(menuBar);
+				appear.duration = 1000;
+				appear.alphaFrom = 0;
+				appear.alphaTo = 1;
+				
+				seq.addChild(mover);
+				seq.addChild(appear);
+				seq.play();
+			}
+			
+			private function onMapPreinitialize(event:MapEvent):void
+			{			
+				var myMapOptions:MapOptions = new MapOptions();
+				myMapOptions.zoom = 5;
+				myMapOptions.center = new LatLng(38.4106, -97.9687);
+				myMapOptions.viewMode = View.VIEWMODE_2D;
+				myMapOptions.attitude = new Attitude(0, 30, 0);
+				map.setInitOptions(myMapOptions);	
+				map.addEventListener(MarkerManager.MARKER_SELECT_EVENT, function(e:MarkerSelectEvent):void{
+					if (e.selectedMarker != null ){
+						var reviewToggleButton:ToggleButton = new ToggleButton();
+						reviewToggleButton.label = "Review and Add Reviews";
+						reviewToggleButton.styleName = "reviewButtonStyle";
+						reviewToggleButton.addEventListener(MouseEvent.CLICK, function():void{
+							if (reviewToggleButton.selected){
+								currentState = "ReviewsState";
+								//								tracker.trackPageview( "/View Reviews" );
+								renderReviews();
+							}else{
+								currentState = "DefaultState";
+							}
+						});
+						markerManager.reviewToggleButton = reviewToggleButton;
+						markerManager.selectedMarker = e.selectedMarker;
+						markerSelected = true;
+						sendHTTPRequest({eventType:"ON_SEARCH_REVIEW", airport_id:markerManager.selectedMarker.airport.airportId} ,fetchReviewsFromServer);
+					}				
+				});
+				map.addEventListener(MarkerManager.MARKER_UNSELECT_EVENT, function(e:Event):void{
+					markerManager.selectedMarker = null;
+					markerSelected = false;
+					reviews = new Array();
+				});
+			}
+			
+			private function onMapReady(e:Event):void
+			{
+				map.addControl(new ZoomControl());
+				map.enableContinuousZoom();
+				
+				loader = new Loader();
+				loader.load(new URLRequest(appContext.radarImageURL));
+				
+				invokeApplicationStartup();				
+			}		
+			
+			private function createRadarOverlay():void{
+				var imgScale:Number = 0.017971305190311;
+				var northBound:Number = 50.406626367301044;
+				var westBound:Number = -127.620375523875420;
+				var southBound:Number = 0;
+				var eastBound:Number = 0;
+				
+				if (chkShowRadar.selected){
+					if (groundOverlay == null){
+						
+						// Now create groundOverlayOptions
+						var groundOverlayOptions:GroundOverlayOptions = new GroundOverlayOptions({applyProjection: true, strokeStyle: null, rotation: 0, rotationContentCenter: null});
+						
+						//calculate bounds (based on separate GFX file)
+						eastBound = westBound + imgScale * loader.content.width;
+						southBound = northBound - imgScale * loader.content.height;
+						
+						groundOverlay = new GroundOverlay(loader.content, new LatLngBounds(new LatLng(southBound, westBound), new LatLng(northBound, eastBound)), groundOverlayOptions);
+						groundOverlay.foreground.alpha = .3;
+						map.addOverlay(groundOverlay);
+					}				
+				}
+				
+				groundOverlay.visible = chkShowRadar.selected;
+			}
+			
+			protected function application1_applicationCompleteHandler(event:FlexEvent):void
+			{				
+				tracker.trackPageview( "/SkyChatter Home" );
+				
+				startupAnimation();				
+			}
+			
+			protected function invokeApplicationStartup():void{
+				
+				var airportId:String;
+				var latitude:String;
+				var longitude:String;
+				var stateId:String;
+				var city:String;
+				var name:String;
+				
+				var airportType:String;
+				var managerPh:String;
+				var airportElev:String;
+				var chartName:String;
+				var fuelTypes:String;
+				var airportOwnership:String;
+				
+				var rawData:String = new AirportDataClass();
+				var airport:Array = JSON.decode(rawData);
+				
+				for (var i:int = 0; i < airport.length; i++){
+					airportId = airport[i].a;
+					name = airport[i].b;
+					city = airport[i].c;
+					stateId = airport[i].d;
+					
+					longitude = airport[i].f;
+					latitude = airport[i].e;
+					
+					airportType = airport[i].g;
+					managerPh = airport[i].h;
+					airportElev = airport[i].i;
+					chartName = airport[i].j;
+					fuelTypes = airport[i].k;
+					
+					airportOwnership = airport[i].l;
+					
+					var obj:Airport = new Airport(airportId, name, city, stateId,  latitude, longitude, airportType,managerPh ,airportElev ,chartName , fuelTypes, airportOwnership);
+					
+					airportDictionary[airportId] = obj;
+					airportList.addItem(obj);					
+				}
+				
+				markerManager = new MarkerManager(map,airportList); 
+				markerManager.placeMarkers();
+			}
+			
+			protected function sendHTTPRequest(params:Object,callback:Function):void{
+				
+				var srv:HTTPService = new HTTPService();
+				srv.url = appContext.serviceUrl;
+				srv.method = "POST";
+				srv.useProxy = false;
+				srv.clearResult();
+				srv.addEventListener(ResultEvent.RESULT,callback);
+				srv.send(params);
+			}
+			
+			protected function controlPanelToggle_changeHandler(event:Event):void
+			{
+				//				var stateName:String = this.states[(controlPanelToggle.selectedIndex == -1)?0:controlPanelToggle.selectedIndex+1].name;
+				var stateName:String = "";
+				
+				if (event.target == searchLinkButton){
+					stateName = "SearchState";
+				}else{
+					stateName = "MapState";
+				}
+				
+				if (stateName == currentState){
+					//					controlPanelToggle.selectedIndex = -1;
+					stateName = this.states[0].name;
+				}		
+				
+				currentState = stateName;
+				
+				if (currentState == "ReviewsState"){
+					renderReviews();
+				}
+			}
+			
+			protected function chkShowSatellite_clickHandler(event:MouseEvent):void
+			{
+				if (chkShowTerrain.selected){
+					chkShowTerrain.selected = false;
+				}
+				if(mapGroup.selectedValue == "Satellite"){
+					map.setMapType(MapType.HYBRID_MAP_TYPE);
+				}else{
+					map.setMapType(MapType.NORMAL_MAP_TYPE);
+				} 
+			}
+			
+			
+			protected function chkShowTerrain_clickHandler(event:MouseEvent):void
+			{
+				if (chkShowTerrain.selected){
+					map.setMapType(MapType.PHYSICAL_MAP_TYPE);
+				}else{
+					chkShowSatellite_clickHandler(event);
+				}
+			}
+			
+			private function responseHandler(e:ResultEvent):Array
+			{
+				var rawData:String = String(e.result);
+				var response:Array = JSON.decode(rawData);
+				
+				return response;
+			}
+			
+			private function onLogin():void
+			{
+				
+				if(loginEmail.text != "" && loginPassword.text != "")
+					sendHTTPRequest({eventType:"ON_LOGIN", email:loginEmail.text, password:loginPassword.text}, loginResponseHandler);
+				else
+					loginMessage.text = VayuuStatusConstants.REQUIRED_FIELDS_ERROR;
+			}
+			
+			private function loginResponseHandler(e:ResultEvent):void
+			{
+				var response:Array = responseHandler(e);
+				var msg:String = response[0].message;
+				if(msg == ""){
+					currentState = "AddReviewState";
+					currentUser= new User(Number(response[1].userId), response[1].userName, response[1].email);
+					loginMessage.text = "";
+				}else{
+					loginMessage.text = msg;
+				}
+			}
+			
+			private function onSignup():void
+			{
+				emailValidator.validate(userEmail.text);
+				
+				if(username.text != "" && userEmail.text != "" && userPassword.text != "" && userPassword2.text != ""){
+					if(userPassword.text != userPassword2.text){
+						signupMessage.text = VayuuStatusConstants.PASSWORD_MATCH_ERROR;
+					}else if(!chk_agree.selected){
+						signupMessage.text = VayuuStatusConstants.AGREE_WITH_TERMS_ERROR;
+					}else{
+						
+						sendHTTPRequest({eventType:"ON_SIGNUP", userName:username.text, email:userEmail.text, password:userPassword.text}, signupResponseHandler);
+					}
+				}else{
+					signupMessage.text = VayuuStatusConstants.REQUIRED_FIELDS_ERROR;
+				}
+			}
+			
+			private function signupResponseHandler(e:ResultEvent):void
+			{
+				var msg:String = responseHandler(e)[0].message;
+				if(msg == ""){
+					signupMessage.text = "";
+					Alert.show(VayuuStatusConstants.SUCCESSFULL_SIGNUP_MESSAGE);
+					currentState = 'LoginState';
+				}else{
+					signupMessage.text = msg;
+				}
+			}
+			
+			private function onAddReview():void
+			{
+				if(userEmail.text == "" || userName.text == ""){
+					reviewErrorMessage.text = VayuuStatusConstants.REQUIRED_FIELDS_ERROR;
+					return;
+				}
+				var validationResult:ValidationResultEvent =  emailValidator.validate(userEmail.text);
+				if (validationResult.results == null){
+					
+					if(reviewComment.text != ""){
+						//						tracker.trackPageview( "/Add Review" );
+						sendHTTPRequest({eventType:"ON_ADD_REVIEW", airport_id:markerManager.selectedMarker.airport.airportId, user_name:userName.text.toLowerCase(), 
+							email:userEmail.text.toLowerCase(), comment:reviewComment.text}, addReviewResponseHanlder);
+					}else{
+						reviewErrorMessage.text = VayuuStatusConstants.REQUIRED_FIELDS_ERROR;
+					}
+				}
+			}
+			
+			private function addReviewResponseHanlder(e:ResultEvent):void
+			{				
+				var response:Array = responseHandler(e); 
+				var msg:String = response[0].message;
+				
+				if(msg == ""){
+					reviewErrorMessage.text = "";
+					currentState = "ReviewsState";
+					//					userName.text  = "";
+					//					userEmail.text = "";
+					reviewComment.text = "";
+					reviews = response[1];
+					renderReviews();
+				}else{					
+					reviewErrorMessage.text = msg;
+				}
+			}
+			
+			private function onSearch():void
+			{
+				if (markerManager.selectedMarker != null){
+					markerManager.selectedMarker.unSelect();
+				}
+				if(txt_search.text != ""){
+					searchInitialized = true;
+					
+					if(ddlb_search.selectedIndex == 0){
+						sendHTTPRequest({eventType:"ON_SEARCH_REVIEW", reviewKeywords:txt_search.text}, searchReviewsResponseHandler);
+					}else if(ddlb_search.selectedIndex == 1){				
+						displayAirportsByList(filterAirportsByNameOrCode(txt_search.text));
+					}
+					
+					//					sendHTTPRequest({eventType:"ON_SEARCH_REVIEW", airport_id:txt_search.text}, searchReviewsByIdResponseHandler); 
+				}
+			}
+			
+			private function searchReviewsResponseHandler(e:ResultEvent):void{
+				currentState = "ReviewsState";
+				
+				//				controlPanelToggle.selectedIndex=-1;
+				var response:Array = fetchReviewsFromServer(e)[1];
+				var airportsWithReviews:ArrayList = new ArrayList();
+				
+				for (var i:int =0; response != null &&  i < response.length; i++){
+					var airport:Airport = airportDictionary[response[i].airportId];
+					if (airport != null && airportsWithReviews.getItemIndex(airport) == -1){
+						airportsWithReviews.addItem(airport);
+					}
+				}
+				displayAirportsByList(airportsWithReviews);
+			}
+			
+			private function displayAirportsByList(list:ArrayList, zoomAdjustRequired:Boolean=true):void{
+				if (list == null || list.length == 0){
+					searchStatus.text = "No Results!";
+				}
+				else{
+					searchStatus.text = "";
+					markerManager.clearMarkerCache();
+					markerManager.removeCurrentMarkerConfiguration();
+					markerManager.airportList = list;
+					markerManager.placeMarkers(true);
+					if (zoomAdjustRequired){
+						markerManager.adjustZoomLevel();
+					}
+				}
+			}
+			
+			private function filterAirportsByNameOrCode(key:String):ArrayList {
+				var result:ArrayList = new ArrayList();
+				key = key.toUpperCase();
+				
+				for (var i:int =0; i < airportList.length; i++){
+					var airport:Airport = airportList.getItemAt(i) as Airport;
+					var searchFields:String = "K" + airport.airportId+"^"+airport.name;
+					if (searchFields.toUpperCase().indexOf(key) > -1){
+						result.addItem(airport);
+					}
+				}
+				
+				
+				return result;
+			}
+			
+			private function fetchReviewsFromServer(e:ResultEvent):Array
+			{
+				reviews = new Array();
+				var response:Array = responseHandler(e);
+				var msg:String = response[0].message;
+				
+				reviews = response[1];
+				if (currentState == "ReviewsState")
+					renderReviews();
+				
+				return response;
+			}
+			
+			private function renderReviews():void{
+				if (reviewGroup != null){
+					reviewGroup.removeAllElements();
+				}
+				reviewsTitle.text = "";
+				var airport:Airport = null;
+				if(reviews != null && reviews.length != 0)
+				{
+					if (markerSelected){
+						airport = markerManager.selectedMarker.airport;
+						reviewsTitle.text = "Reviews for "+ airport.name + ", "+ airport.stateId+" ("+airport.airportId+")";
+					}else if (searchInitialized){
+						reviewsTitle.text = "Reviews for search keyword \""+ txt_search.text +"\"";
+					}
+					for (var i:int; i < reviews.length; i++){						
+						var pnl:ReviewPanel = new ReviewPanel();
+						if (i % 2 == 0){
+							pnl.setStyle("backgroundColor", 0xffffff);
+						}else{
+							pnl.setStyle("backgroundColor", 0xf8f5e9);
+						}
+						pnl.percentWidth = 80;
+						var obj:Object =  reviews[i];
+						pnl.reviewerName = reviews[i].userName;
+						pnl.date = reviews[i].dateOfEntry;
+						pnl.review = reviews[i].reviewComment;
+						reviewGroup.addElement(pnl);
+					}
+				}else{
+					if (markerSelected){
+						airport = markerManager.selectedMarker.airport;
+						reviewsTitle.text = "No Reviews Found for "+ airport.name + ", "+ airport.stateId+" ("+airport.airportId+")";
+					}else if (searchInitialized){
+						reviewsTitle.text = "No Reviews Found for search keyword \""+ txt_search.text +"\"";
+					}
+				}
+				
+			}
+			
+			private function invalidEmail(evt:ValidationResultEvent):void {
+				userEmail.errorString = evt.message;
+				reviewErrorMessage.text = evt.message;
+			}
+			private function validEmail(evt:ValidationResultEvent):void {
+				userEmail.errorString = "";
+				reviewErrorMessage.text = "";
+			}
+			
+			
+			protected function closeReviewButton_clickHandler(event:MouseEvent):void
+			{
+				currentState = "DefaultState";
+				//				controlPanelToggle.selectedIndex = -1;
+				if (markerSelected){
+					markerManager.reviewToggleButton.selected = false;
+				}
+			}
+			
+			protected function application1_addedToStageHandler(event:Event):void
+			{
+				stageWidth = this.screen.width;
+			}
+			
+			
+			protected function airportTypeSelectHanlder(event:MouseEvent, airportType:String):void
+			{
+				var target:CheckBox = event.target as CheckBox;
+				
+				if (target.id == "chkSelectedAll"){
+					chkHeliport.enabled = !target.selected;
+					chkAirport.enabled=  !target.selected;
+					chkSeaPlaneBase.enabled= !target.selected;
+					chkBalloonport.enabled= !target.selected;
+					chkStolport.enabled= !target.selected;
+					chkGliderport.enabled= !target.selected;
+					chkUltraLight.enabled= !target.selected;
+				}
+				
+				if (target.selected){
+					markerManager.addAirportTypeToDisplay(airportType);
+				}else{
+					markerManager.removeAirportTypeFromDisplay(airportType);
+				}
+			}
+			
+			
+			protected function clearSearch():void
+			{
+				map.setZoom(5);
+				map.setCenter(new LatLng(38.4106, -97.9687));	
+				
+				searchInitialized = false;
+				txt_search.text = "";
+				ddlb_search.selectedIndex = 1;				
+				reviews = new Array();
+				if (markerManager.selectedMarker != null){
+					markerManager.selectedMarker.unSelect();
+				}
+				
+				displayAirportsByList(airportList, false);				
+			}
+			
+			
+			protected function logoutButton_clickHandler(event:MouseEvent):void
+			{
+				currentUser = new User(-1, "Guest User", null);
+			}
+			
+			
+			protected function aboutButton_clickHandler(event:MouseEvent):void
+			{
+				currentState = "AboutState";
+				//				PopupWin.baseURL = "http://skychatter.blogspot.com";
+				//				PopupWin.openWindow("");
+			}
+			
+			
+			protected function txt_search_keyUpHandler(event:KeyboardEvent):void
+			{
+				if (event.keyCode == 13){
+					onSearch();
+				}
+			}
+			
+			
+			protected function facebookButton_clickHandler(event:MouseEvent):void
+			{
+				PopupWin.baseURL = "http://www.facebook.com/pages/Skychatter/164507093584176";
+				PopupWin.openWindow("");
+			}
+			
+			
+			protected function application1_resizeHandler(event:ResizeEvent):void
+			{
+				if (this.screen != null){
+					stageWidth = this.screen.width;
+					markerManager.placeMarkers();
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:BorderContainer 	width="100%" height="100%" id="mainContainer">
+		<!--		<maps:Map
+		mapevent_mappreinitialize="onMapPreinitialize(event)"
+		mapevent_mapready="onMapReady()"
+		id="map"
+		width="100%"
+		height="100%"
+		key="ABQIAAAAC5pP_BhT-ZJurnKT3hiDchT3KoDuueKnHJyOo-c2lnWRMtz2hxRR8lCdKm9w7uDJ04l_cLuTjDQpzA"/>
+		-->		
+		
+		
+		<mx:Canvas backgroundColor="white" width="{stageWidth}" height="50" alpha=".6" id="headerBar"
+				   verticalScrollPolicy="off" >
+			<mx:Image source="assets/skychatter_title.png" verticalCenter="0" left="50"/>
+			
+			<mx:HBox verticalAlign="middle" horizontalAlign="right" right="30" id="menuBar" alpha="0" height="100%">
+				
+				<!--				<s:Label text="Welcome! "/>
+				<s:Label id="userNameDisplay" text="{currentUser.userName}." fontWeight="bold"/>
+				<mx:Spacer width="2"/>
+				<mx:LinkButton label="Logout" color="0x0000FF" fontWeight="bold" enabled="{currentUser.id != -1}" id = "logoutButton" click="logoutButton_clickHandler(event)"/>
+				<mx:Spacer width="3"/>-->
+				<!--				<mx:ToggleButtonBar id="controlPanelToggle" color="0x323232" fontWeight="bold" horizontalGap="15" dataProvider="{buttonList}" selectedIndex="-1" 
+				verticalCenter="0" height="30" itemClick="controlPanelToggle_changeHandler(event)"
+				fontFamily="Ubuntu-Title" fontSize="18"
+				/>-->
+				
+				<mx:LinkButton id="searchLinkButton" fontWeight="bold" label="" 
+							   height="30" click="controlPanelToggle_changeHandler(event)"
+							   fontSize="18" icon="@Embed('assets/searchLink.png')"
+							   labelPlacement="left" bottom="0"/>
+				<mx:Spacer width="10"/>
+				<mx:LinkButton id="mapLinkButton" fontWeight="bold" label=""  
+							   height="30" click="controlPanelToggle_changeHandler(event)"
+							   fontSize="18" icon="@Embed('assets/mapLink.png')"
+							   labelPlacement="left"/>
+				
+				<mx:Spacer width="10"/>
+				<mx:LinkButton label="" 
+							   icon="@Embed('assets/aboutLink.png')"
+							   fontSize="18" fontWeight="bold" height="30"
+							   click="aboutButton_clickHandler(event)">
+				</mx:LinkButton>
+				
+			</mx:HBox>
+		</mx:Canvas>
+		
+		<s:BorderContainer alpha="0.7" height="120" x = "{stageWidth-searchPanel.width}" id = "searchPanel" borderVisible="false" includeIn="SearchState" y="{headerBar.height}">
+			<mx:Button skin="@Embed('assets/close-button.gif')" right ="1" click="closeReviewButton_clickHandler(event)"/>
+			
+			<s:VGroup verticalAlign="bottom">
+				<mx:Spacer height="20"/>
+				<s:HGroup verticalAlign="middle">
+					<s:Label fontWeight="bold" paddingLeft="10">Search</s:Label>
+					
+					<s:DropDownList id="ddlb_search" selectedIndex="1" dataProvider="{new ArrayList(['Reviews', 'Airports', 'Trips'])}"></s:DropDownList>
+					<s:TextInput id="txt_search" width="250" keyUp="txt_search_keyUpHandler(event)"></s:TextInput>
+				</s:HGroup>
+				<s:HGroup horizontalAlign="center" width="100%">
+					
+					<s:Label id="searchStatus" fontSize="11" fontWeight="bold" text=""/>
+				</s:HGroup>
+				<s:HGroup verticalAlign="middle" horizontalAlign="right" width= "100%" >
+					<s:Button label="Clear" click="clearSearch()"/>
+					<s:Button label="Search" click="onSearch()"/>
+				</s:HGroup>				
+			</s:VGroup>
+		</s:BorderContainer>
+		
+		<s:BorderContainer alpha="0.7" width = "250" height="40%" x = "{stageWidth-aboutPanel.width}" id = "aboutPanel" 
+						   borderVisible="false" includeIn="AboutState" y="{headerBar.height}">
+			<mx:Button skin="@Embed('assets/close-button.gif')" right ="1" click="closeReviewButton_clickHandler(event)"/>
+			
+			<s:VGroup verticalAlign="bottom" horizontalAlign="center" width="100%">
+				<mx:Spacer height="20"/>
+				<mx:Text fontSize="14" fontWeight="bold" width="92%"
+						 text="On Skychatter, pilots can read and write reviews for airports and trips." />					
+				<mx:Text fontSize="14" fontWeight="bold" width="92%"
+						 text="Share your flying experiences with other pilots. Tell them about weird runways, $100 burger joints, quaint picnic spots you can walk to, cool airport coffee shops etc." />	  					
+				
+				
+				<mx:Button fontSize="13" fontWeight="bold" label="Join us on Facebook" cornerRadius="10" click="facebookButton_clickHandler(event)"/>
+			</s:VGroup>
+		</s:BorderContainer>
+		
+		<s:BorderContainer alpha="0.7" height="36%" x = "{stageWidth-mapPanel.width-100}" id = "mapPanel" borderVisible="false" includeIn="MapState" y="{headerBar.height}">
+			<mx:Button skin="@Embed('assets/close-button.gif')" right ="1" click="closeReviewButton_clickHandler(event)"/>
+			<mx:Form id="optionsForm" label="Options">
+				<s:Label textDecoration="underline" text="View Types" fontWeight="bold" fontSize="11" />
+				<s:HGroup gap="25">
+					<s:RadioButton id="mapRadioBtn" fontWeight="bold" label="Map" click="chkShowSatellite_clickHandler(event)" groupName="mapGroup" selected="true"/>
+					<s:RadioButton id="satelliteRadioBtn" fontWeight="bold" label="Satellite" click="chkShowSatellite_clickHandler(event)" groupName="mapGroup"/>
+				</s:HGroup>
+				
+				<s:Label textDecoration="underline" text="Additional Overlays" fontWeight="bold" fontSize="11" />
+				<s:VGroup paddingLeft="5">
+					<s:CheckBox id="chkShowTerrain" fontWeight="bold" label="Terrain" click="chkShowTerrain_clickHandler(event)"/>
+					<s:CheckBox id="chkShowRadar" fontWeight="bold" label="Weather Radar" click="createRadarOverlay()"/>
+				</s:VGroup>
+				
+				<s:Label textDecoration="underline" text="Airport Types" fontWeight="bold" fontSize="11" />
+				<mx:Grid>
+					<mx:GridRow>
+						<mx:GridItem><s:CheckBox id="chkSelectedAll" label="(Select All)" fontWeight="bold" click="airportTypeSelectHanlder(event, MarkerManager.AIRPORT_TYPE_ALL)"/></mx:GridItem>
+						<mx:GridItem><s:CheckBox id="chkHeliport" label="HELIPORT" fontWeight="bold" click="airportTypeSelectHanlder(event, MarkerManager.AIRPORT_TYPE_HELIPORT)"/></mx:GridItem>
+					</mx:GridRow>
+					<mx:GridRow>
+						<mx:GridItem><s:CheckBox id="chkAirport" label="AIRPORT" selected="true" fontWeight="bold" click="airportTypeSelectHanlder(event, MarkerManager.AIRPORT_TYPE_AIRPORT)"/></mx:GridItem>
+						<mx:GridItem><s:CheckBox id="chkSeaPlaneBase" label="SEAPLANE BASE" fontWeight="bold" click="airportTypeSelectHanlder(event, MarkerManager.AIRPORT_TYPE_SEAPLANE_BASE)"/></mx:GridItem>
+					</mx:GridRow>
+					<mx:GridRow>
+						<mx:GridItem><s:CheckBox id="chkBalloonport" label="BALLOONPORT" fontWeight="bold" click="airportTypeSelectHanlder(event, MarkerManager.AIRPORT_TYPE_BALLOONPORT)"/></mx:GridItem>
+						<mx:GridItem><s:CheckBox id="chkStolport" label="STOLPORT" fontWeight="bold" click="airportTypeSelectHanlder(event, MarkerManager.AIRPORT_TYPE_STOLPORT)"/></mx:GridItem>
+					</mx:GridRow>
+					<mx:GridRow>
+						<mx:GridItem><s:CheckBox id="chkGliderport" label="GLIDERPORT" fontWeight="bold" click="airportTypeSelectHanlder(event, MarkerManager.AIRPORT_TYPE_GLIDERPORT)"/></mx:GridItem>
+						<mx:GridItem><s:CheckBox id="chkUltraLight" label="ULTRALIGHT" fontWeight="bold" click="airportTypeSelectHanlder(event, MarkerManager.AIRPORT_TYPE_ULTRALIGHT)"/></mx:GridItem>
+					</mx:GridRow>
+				</mx:Grid>
+				<mx:Spacer height="3" />
+				<!--<mx:FormItem label="Show Wind Icons">
+				<s:CheckBox id="chkShowWindIcons" click="chkShowWindIcons_clickHandler(event)"/>
+				</mx:FormItem>
+				-->
+			</mx:Form>		
+		</s:BorderContainer>
+		
+		<s:BorderContainer alpha="0.7" width = "{stageWidth*0.30}" x="{stageWidth-reviewsPanel.width}" height="94%" id="reviewsPanel" borderVisible="false" includeIn="ReviewsState, LoginState, AddReviewState, SignupState" y="{headerBar.height}">
+			<!--<s:Button label="X" right ="1" id="closeReviewButton" click="closeReviewButton_clickHandler(event)" width="30"/>-->
+			<mx:Button skin="@Embed('assets/close-button.gif')" id="closeReviewButton" right ="1" click="closeReviewButton_clickHandler(event)"/>
+			<s:VGroup width="100%" height="98%" y="{closeReviewButton.y+closeReviewButton.height+10}">
+				
+				<s:RichText id="reviewsTitle" width="90%" paddingLeft="25" fontWeight="bold" text = "">
+					
+				</s:RichText>
+				<mx:Spacer height="10"/>
+				<s:HGroup paddingLeft="40">
+					<mx:Button id="addReviewButton" label="Add Your Review >>" width="180" upSkin="@Embed('assets/arrowButton.png')" enabled="{markerSelected}"
+							   overSkin="@Embed('assets/arrowButtonOver.png')" downSkin="@Embed('assets/arrowButton.png')"
+							   focusSkin="@Embed('assets/arrowButtonOver.png')" disabledSkin="@Embed('assets/arrowButton.png')"
+							   color="0x323232" textRollOverColor="0xffffff" textSelectedColor="0x323232" paddingLeft="3" fontWeight="bold"
+							   click="{/*(currentUser.id == -1)?currentState='LoginState':*/currentState='AddReviewState';}"  />
+				</s:HGroup>
+				
+				<mx:Spacer height="10"/>
+				<s:Scroller hasFocusableChildren="true" tabEnabled="false" width="100%" verticalScrollPolicy="on">
+					<s:VGroup id="reviewGroup" width="100%" height="{reviewsPanel.height - addReviewButton.height - 70}" horizontalAlign="center">
+					</s:VGroup>
+				</s:Scroller>
+			</s:VGroup>
+		</s:BorderContainer>
+		
+	</s:BorderContainer>
+	
+	<mx:Canvas width="100%" height="100%" backgroundColor="0x666666" backgroundAlpha=".75" alpha=".75" includeIn="LoginState, AddReviewState, SignupState">
+		
+		<mx:Panel id="loginPanel" title="Add Your Review" width="400" height="310" horizontalCenter="0" verticalCenter="0" includeIn="LoginState" layout="vertical" paddingTop="10" paddingRight="10" paddingBottom="10" paddingLeft="10">
+			<s:RichText width="360" text="We want to make sure reviews come from people and pilots so we ask you to login." />
+			<mx:Spacer height="5" />
+			<mx:Form width="100%" color="0x323232" paddingTop="0">
+				<mx:FormItem label="* Email:">
+					<s:TextInput id="loginEmail" width="200"/>
+				</mx:FormItem>
+				<mx:FormItem label="* Password:">
+					<s:TextInput id="loginPassword" width="200" displayAsPassword="true"/>
+				</mx:FormItem>
+			</mx:Form>
+			<s:HGroup paddingLeft="100">
+				<s:Button label="Login" click="onLogin()" />
+				<mx:LinkButton label="Forgot your login or password?" color="0x105CB6" textDecoration="underline" />
+			</s:HGroup>
+			<mx:Spacer height="15" />
+			<s:RichText width="360" text="If you do not have an account, please sign in and be on your way to sharing your flying experiences" />
+			<mx:Spacer height="5" />
+			<s:HGroup paddingLeft="100">
+				<s:Button label="Sign up" click="{currentState='SignupState'}" />
+				<s:Button label="Cancel" click="{currentState='ReviewsState'}" />
+			</s:HGroup>
+			<mx:ControlBar>
+				<mx:Label id="loginMessage" styleName="errorMessage" />
+			</mx:ControlBar>
+		</mx:Panel>
+		
+		<mx:Panel id="reviewPanel" title="Add Your Review" width="500" height="350" horizontalCenter="0" verticalCenter="0" includeIn="AddReviewState" layout="vertical" paddingTop="10" paddingRight="10" paddingBottom="10" paddingLeft="10">
+			<mx:Form width="100%" color="0x323232" paddingTop="0">
+				<mx:FormItem label="* Your Name:">
+					<s:TextInput id="userName" width="200"/>
+				</mx:FormItem>
+				<mx:FormItem label="* Email:">
+					<s:TextInput id="userEmail" width="200"/>
+				</mx:FormItem>
+				<s:RichText text="* Review:" />
+				<s:TextArea id="reviewComment" width="100%" />
+			</mx:Form>
+			<s:HGroup width="100%" horizontalAlign="right">
+				<s:Button label="Post" click="onAddReview()" />
+				<s:Button label="Close" click="{currentState='ReviewsState'}" />
+			</s:HGroup>
+			<mx:ControlBar>
+				<mx:Label id="reviewErrorMessage" styleName="errorMessage" />
+			</mx:ControlBar>
+		</mx:Panel>
+		
+		<mx:Panel id="signupPanel" title="Add Your Review" width="400" height="360" horizontalCenter="0" verticalCenter="0" includeIn="SignupState" layout="vertical" paddingTop="10" paddingRight="10" paddingBottom="10" paddingLeft="10">
+			<s:RichText width="360" text="We want to make sure reviews come from people and pilots so we ask you to sign in. Your email address will not be sold or given away." />
+			<mx:Spacer height="5" />
+			<mx:Form width="100%" color="0x323232" paddingTop="0">
+				<mx:FormItem label="* Name:">
+					<s:TextInput id="username" width="150"/>
+				</mx:FormItem>
+				<mx:FormItem label="* Email:">
+					<s:TextInput id="userEmail_old" width="150"/>
+				</mx:FormItem>
+				<mx:FormItem label="* Password:">
+					<s:TextInput id="userPassword" width="150" displayAsPassword="true"/>
+				</mx:FormItem>
+				<mx:FormItem label="* Re-type password:">
+					<s:TextInput id="userPassword2" width="150" displayAsPassword="true"/>
+				</mx:FormItem>
+				<mx:FormItem label="Home Airport">
+					<s:TextInput id="homeAirport" width="150"/>
+				</mx:FormItem>
+				<mx:FormItem label="(if you have one):" />
+			</mx:Form>
+			<s:CheckBox id="chk_agree" label="I agree to the Terms of Use and Privacy Policy" />
+			<s:HGroup paddingLeft="100">
+				<s:Button label="Sign up" click="onSignup()" />
+				<s:Button label="Cancel" click="{currentState='ReviewsState'}" />
+			</s:HGroup>
+			<mx:ControlBar>
+				<mx:Label id="signupMessage" styleName="errorMessage" />
+				<mx:Label id="infoMessage" styleName="infoMessage" />
+			</mx:ControlBar>
+		</mx:Panel>
+		
+	</mx:Canvas>
+	
+</s:Application>
