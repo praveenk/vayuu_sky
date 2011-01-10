@@ -49,7 +49,8 @@ class JSONConverter{
 			$reviewarray = array();
 			$reviewarray["id"]=$review->id;
 			$reviewarray["dateOfEntry"]=$review->date_of_entry;
-			$reviewarray["reviewComment"]=$review->review_comment;
+			
+			$reviewarray["reviewComment"]=htmlentities($review->review_comment);
 
 			$airport = R::findOne("airport", "id=?", array($review->airport_id));
 			if ($airport == null){

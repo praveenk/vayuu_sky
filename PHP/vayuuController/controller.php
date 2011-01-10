@@ -18,8 +18,9 @@ require_once 'listener/AirportInfoEventListener.php';
 require_once 'rb12lg.php';
 
 // setting up the database connection
-R::setup("mysql:host=localhost;dbname=cool2fly2_development","root","");
-
+R::setup("mysql:host=cool2fly2dev.db.6045347.hostedresource.com;dbname=cool2fly2dev","cool2fly2dev","Dexter123");
+//R::setup("mysql:host=localhost;dbname=cool2fly2_development","root","");
+R::freeze();
 // events registery
 $eventListeners=array("ON_APPLICATION_STARTUP"=>new ApplicationStartupListener(),
 		"ON_LOGIN"=>new LoginEventListener(),

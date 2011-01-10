@@ -15,16 +15,18 @@ class SearchReviewEventListener {
 
 		$reviewKeywords = @$parameterNames["reviewKeywords"];
 
+		$airport = @$parameterNames["airport"];
+		
 		$reviews = null;
 
 		// if the airport id is provided get the reviews against that airport.
-		if ($airport_code != null && $airport_code != ""){
+		if ($airport == null && $airport_code != null && $airport_code != ""){
 			// get the numeric airport id against the airport code
 			$airport = R::findOne("airport", "airport_id=?", array($airport_code));
-			if ($airport != null){
-				// get the reviews list against the airport id
-				$reviews = R::find("user_review", "airport_id = ?", array($airport->id));
-			}
+		}
+		if ($airport != null){
+			// get the reviews list against the airport id
+			$reviews = R::find("user_review", "airport_id = ?", array($airport->id));
 		}
 		elseif ($reviewKeywords != null && $reviewKeywords != ""){
 			$reviews = R::find("user_review", "review_comment like '%".$reviewKeywords."%'");
